@@ -1,0 +1,116 @@
+#### Extraer datos de un url HTML
+# Importar librerías
+import requests
+from bs4 import BeautifulSoup
+import numpy as np
+import cv2
+import base64
+
+# URL
+url = 'https://servicios.dae.ipn.mx/vcred/?h=b1cec1faf437bc8750d23220714efc2f37505d521b1f83b35708db4a97bb89b'
+
+# Realizar la solicitud HTML
+response = requests.get(url)
+if response.status_code != 200:
+    print("Error al cargar la página.")
+    exit()
+
+# Crear objeto BeautifulSoup para analizar el HTML
+soup = BeautifulSoup(response.content, 'html.parser')
+
+# Extraer datos de interés
+class_find = ['nombre', 'boleta', 'carrera', 'escuela']
+metadata = []
+
+for class_name in class_find:
+    elements = soup.find_all('div', class_=class_name)
+    for element in elements:
+        metadata.append(element.get_text(strip=True))
+
+# Imprimir los metadatos extraídos
+print("Metadatos extraídos:")
+for data in metadata:
+    print(data)
+
+# Obtener todas las imágenes
+img_tags = soup.find_all('img')
+
+# Elegir la segunda imagen (índice 1)
+if len(img_tags) > 1:
+    desired_img = img_tags[1]  # Indice de la imagen
+    src = desired_img.get('src')
+
+    if src.startswith('data:image'):
+        imagen_base64 = src.split(',')[1]
+        image_data = base64.b64decode(imagen_base64)
+        image_array = np.frombuffer(image_data, dtype=np.uint8)
+        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+
+        # Mostrar la imagen
+        cv2.imshow('Imagen', image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+    elif src.startswith('http'):
+        print(f"La imagen es una URL: {src}")
+else:
+    print("No se encontraron suficientes imágenes.")
+
+///////////////////////////////////////// Lectura QR
+from pyzbar.pyzbar import decode
+import cv2
+import requests
+from Data_Extract import requestData
+
+def lector_qr_rapido():
+    cap = cv2.VideoCapture(0)
+    # Esperar algún QR
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        frame = cv2.flip(frame, 1)  # Voltear horizontalmente
+        # Crear una copia del frame 
+        copyframe = frame.copy()
+        
+        #Dimenciones
+        height, width, _ = frame.shape
+        # Coordenadas del cuadrado
+        square_size = 200  # Tamaño del cuadrado 
+        top_left_x = (width - square_size) // 2
+        top_left_y = (height - square_size) // 2
+        bottom_right_x = top_left_x + square_size
+        bottom_right_y = top_left_y + square_size
+
+        # Dibujar el cuadrado en la imagen
+        color = (0, 255, 0)  # Color del cuadrado 
+        thickness = 2  # Grosor de la línea del cuadrado
+        cv2.rectangle(frame, (top_left_x, top_left_y), (bottom_right_x, bottom_right_y), color, thickness)
+        cv2.putText(frame, "Coloca el QR aqui",
+                    (top_left_x, top_left_y-20), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        try :    
+            # Decodificar QR usando pyzbar
+            qr_codes = decode(copyframe)
+        except:
+            print("Coloca bien el QR perra")
+        for qr in qr_codes:
+            qr_data = qr.data.decode("utf-8")
+            response = requests.get(qr_data)
+            if response.status_code == 200:
+                print(f"QR detectado: {qr_data}")
+                qr_data = requestData(qr_data)
+                img, metadata = qr_data.requestURL()
+                print(metadata)
+                cv2.imshow('Imagen', img)
+            else:
+                print("Escanea otra vez!")
+        cv2.imshow("Lector QR", frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+lector_qr_rapido()
